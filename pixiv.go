@@ -1,4 +1,3 @@
-
 package main
 
 import (
@@ -56,7 +55,7 @@ func main() {
         os.Exit(1)
     }
 
-    htmlDoc, err := goquery.NewDocumentFromResponse(resp)
+    htmlDoc, err := goquery.NewDocumentFromReader(resp.Body)
 
     if err != nil {
         fmt.Println(err)
