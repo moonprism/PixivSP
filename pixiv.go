@@ -25,7 +25,7 @@ type LoginResponse struct {
 var cookieUrl *url.URL
 
 func initial() {
-    cookieUrl, _ = url.Parse(PixivLoginUrl)
+    cookieUrl, _ = url.Parse(PixivBookmark)
 }
 
 func main() {
@@ -45,15 +45,13 @@ func main() {
         }
     }
 
-    //cookies, err := lib.LoadCookies(cookieUrl)
+    cookies, err := lib.LoadCookies(cookieUrl)
 
-    //if err != nil {
-    //    login(client)
-    //} else {
-    //    client.Jar.SetCookies(cookieUrl, cookies)
-    //}
-
-    login(client)
+    if err != nil {
+        login(client)
+    } else {
+        client.Jar.SetCookies(cookieUrl, cookies)
+    }
 
     resp, err := client.Get(PixivBookmark)
 
@@ -71,7 +69,7 @@ func main() {
     userName := htmlDoc.Find("a.user-name").Text()
 
    if userName == "" {
-
+        login(client)
    } else {
        println(userName)
    }
