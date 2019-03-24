@@ -2,40 +2,34 @@ package main
 
 import (
     "fmt"
-    "net"
+    "github.com/moonprism/PixivSP/lib"
     "net/http"
     "net/http/cookiejar"
     "os"
-    "time"
 
     "github.com/PuerkitoBio/goquery"
-    "golang.org/x/net/proxy"
 )
 
-// setTransport use socket5 proxy
-func setTransport(client *http.Client, addr string) error {
+var pixiv = &struct{
+    PixivUser string
+    PixivPasswd string
+}{}
 
-    dialer, err := proxy.SOCKS5("tcp", addr,
-        nil,
-        &net.Dialer{
-            Timeout:   30 * time.Second,
-            KeepAlive: 30 * time.Second,
-        },
-    )
-    if err != nil {
-        return err
-    }
+var proxy = &struct{
+    ProxyOn bool
+    ProxyHost string
+    ProxyPort string
+}{}
 
-    client.Transport = &http.Transport{
-        Proxy:               nil,
-        Dial:                dialer.Dial,
-        TLSHandshakeTimeout: 10 * time.Second,
-    }
-
-    return nil
+func initial() {
+    lib.MapTo("pixiv", pixiv)
+    
+    lib.MapTo("proxy", proxy)
 }
 
 func main() {
+
+    initial()
 
     cookieJar, _ := cookiejar.New(nil)
 
@@ -43,10 +37,13 @@ func main() {
         Jar: cookieJar,
     }
 
-    if err := setTransport(client, "127.0.0.1:1080"); err != nil {
-        fmt.Println(err)
-        os.Exit(1)
+    if  proxy.ProxyOn == true {
+        if err := lib.SetTransport(client, proxy.ProxyHost+":"+proxy.ProxyPort); err != nil {
+            fmt.Println(err)
+            os.Exit(1)
+        }
     }
+
 
     // request login page
     resp, err := client.Get("https://accounts.pixiv.net/login?lang=zh&source=pc&view_type=page&ref=wwwtop_accounts_index")
