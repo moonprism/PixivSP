@@ -3,6 +3,7 @@ package main
 import (
     "encoding/json"
     "errors"
+    "fmt"
     "github.com/PuerkitoBio/goquery"
     "github.com/moonprism/PixivSP/lib"
     "io/ioutil"
@@ -10,30 +11,43 @@ import (
     "net/http"
     "net/http/cookiejar"
     "net/url"
+    "strconv"
 )
 
 const (
+    // pixiv login form
     PixivLoginLink  = "https://accounts.pixiv.net/login?lang=zh&source=pc&view_type=page&ref=wwwtop_accounts_index"
     PixivLoginToLink  = "https://accounts.pixiv.net/api/login?lang=zh"
-    PixivBookmarkLink  = "https://www.pixiv.net/bookmark.php"
+    // bookmark format link
+    PixivBookmarkLink  = "https://www.pixiv.net/bookmark.php?rest=show&p=%d"
 )
 
 type Pixiv struct {
-    UserID string
-    password string
-    Client *http.Client
-    IndexUrl *url.URL
+    // user info
+    UserID      string
+    password    string
+
+    Client      *http.Client
+    IndexUrl    *url.URL
+
     ProcessChan chan *Illust
 }
 
 type Illust struct{
-    ID string
-    AuthorID string
-    LikeNum int
+    // illust info
+    ID      string
+    Name    string
+    Like    int
+    Tags     string
+
+    // author info
+    MemberId    string
+    MemberName  string
+
     // generate link
-    Link string
-    // error info
-    Error error
+    Link    string
+    // processerror info
+    Error   error
 }
 
 func NewPixiv(id string, passwd string) (p *Pixiv) {
@@ -41,7 +55,7 @@ func NewPixiv(id string, passwd string) (p *Pixiv) {
     p = &Pixiv{
         UserID: id,
         password: passwd,
-        ProcessChan: make(chan *Illust, 100),
+        ProcessChan: make(chan *Illust, 10),
     }
 
     jar, _ := cookiejar.New(nil)
@@ -52,7 +66,6 @@ func NewPixiv(id string, passwd string) (p *Pixiv) {
 
     p.Client = client
     p.IndexUrl, _ = url.Parse("https://www.pixiv.net")
-
     return
 }
 
@@ -64,49 +77,76 @@ func (p *Pixiv) GetCookies() []*http.Cookie {
     return p.Client.Jar.Cookies(p.IndexUrl)
 }
 
-func (p *Pixiv) SetProxy(host string, port int) {
-    if  lib.ProxyConf.ProxyOn == true {
-        if err := lib.SetTransport(p.Client, lib.ProxyConf.ProxyHost+":"+lib.ProxyConf.ProxyPort); err != nil {
-            log.Fatalf("proxy - fatal: %v", err)
-        }
+func (p *Pixiv) SetProxy(host string, port string) {
+
+    if err := lib.SetTransport(p.Client, host+":"+port); err != nil {
+        log.Fatalf("proxy - fatal: %v", err)
     }
 }
 
-func (p *Pixiv) ParseBookmark(page int) (ills []Illust, err error) {
-
-    for _, ill := range ills {
-        go p.ParseIllust(&ill)
+func (p *Pixiv) requestGet(link string) (doc *goquery.Document, err error) {
+    resp, err := p.Client.Get(link)
+    if err != nil {
+        log.Printf("request url %s failed: %v", link, err)
     }
 
-    processNum := 0
+    // parse html doc
+    doc, err = goquery.NewDocumentFromReader(resp.Body)
+    if err != nil {
+        log.Printf("parse html %s failed: %v", link, err)
+    }
+    return
+}
 
-    for ill := range p.ProcessChan {
-        if ill.Link != "" && ill.Error == nil {
-            processNum ++
+func (p *Pixiv) ParseBookmark(page int) (err error) {
+
+    link := fmt.Sprintf(PixivBookmarkLink, page)
+    htmlDoc, err := p.requestGet(link)
+    if err != nil {
+        return
+    }
+
+    if userName := htmlDoc.Find("a.user-name").Text(); userName == "" {
+        err = errors.New("login failed maybe ~")
+        return
+    }
+
+    htmlDoc.Find("li.image-item").Each(func(i int, selection *goquery.Selection) {
+        ill := &Illust{}
+
+        imgDoc := selection.Find("img").First()
+
+        illID, isSet := imgDoc.Attr("data-id")
+        if !isSet {
+            return
         }
-    }
+        ill.ID = illID
+        ill.Name = selection.Find("h1.title").First().Text()
+        ill.Tags, _ = imgDoc.Attr("data-tags")
 
+        authorDoc := selection.Find("a.user").First()
+
+        ill.MemberId, _ = authorDoc.Attr("data-user_id")
+        ill.MemberName, _ = authorDoc.Attr("data-user_name")
+
+        count := selection.Find("a.bookmark-count").First().Text()
+        ill.Like, _ = strconv.Atoi(count)
+
+        go p.ParseIllust(ill)
+    })
     return
 }
 
 func (p *Pixiv) ParseIllust(ill *Illust) {
 
-    // process over
+    // todo process
     p.ProcessChan <- ill
 }
 
 func (p *Pixiv) Login() (err error) {
     // request login page
-    resp, err := p.Client.Get(PixivLoginLink)
+    htmlDoc, err := p.requestGet(PixivLoginLink)
     if err != nil {
-        log.Printf("login - get pixiv login url failed: %v", err)
-        return
-    }
-
-    // parse html doc
-    htmlDoc, err := goquery.NewDocumentFromReader(resp.Body)
-    if err != nil {
-        log.Printf("login - goquery parse failed: %v", err)
         return
     }
 
@@ -119,7 +159,7 @@ func (p *Pixiv) Login() (err error) {
     }
 
     // login
-    resp, err = p.Client.PostForm(PixivLoginToLink, url.Values{
+    resp, err := p.Client.PostForm(PixivLoginToLink, url.Values{
         "pixiv_id" : {lib.PixivConf.PixivUser},
         "password" : {lib.PixivConf.PixivPasswd},
         "post_key" : {postKey},
