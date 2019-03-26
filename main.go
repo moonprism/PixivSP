@@ -24,12 +24,12 @@ func main() {
 
 	for {
 		select {
-		case i := <- p.ProcessChan:
+		case i := <-p.ProcessChan:
 			if i.Link != "" && i.Error == nil {
 				// make struct
 			}
 			spew.Dump(i)
 		}
 	}
-	
+
 }
