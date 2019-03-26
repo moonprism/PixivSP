@@ -5,13 +5,15 @@ import (
     "errors"
     "fmt"
     "github.com/PuerkitoBio/goquery"
-    "github.com/moonprism/PixivSP/lib"
+    "golang.org/x/net/proxy"
     "io/ioutil"
     "log"
+    "net"
     "net/http"
     "net/http/cookiejar"
     "net/url"
     "strconv"
+    "time"
 )
 
 const (
@@ -48,10 +50,11 @@ type Illust struct{
     Link    string
     // processerror info
     Error   error
+    // in channel times
+    Times   int
 }
 
 func NewPixiv(id string, passwd string) (p *Pixiv) {
-
     p = &Pixiv{
         UserID: id,
         password: passwd,
@@ -77,11 +80,24 @@ func (p *Pixiv) GetCookies() []*http.Cookie {
     return p.Client.Jar.Cookies(p.IndexUrl)
 }
 
-func (p *Pixiv) SetProxy(host string, port string) {
-
-    if err := lib.SetTransport(p.Client, host+":"+port); err != nil {
-        log.Fatalf("proxy - fatal: %v", err)
+func (p *Pixiv) SetProxy(host string, port string) (err error) {
+    dialer, err := proxy.SOCKS5("tcp", host+":"+port,
+        nil,
+        &net.Dialer{
+            Timeout:   30 * time.Second,
+            KeepAlive: 30 * time.Second,
+        },
+    )
+    if err != nil {
+        return
     }
+
+    p.Client.Transport = &http.Transport{
+        Proxy:               nil,
+        Dial:                dialer.Dial,
+        TLSHandshakeTimeout: 10 * time.Second,
+    }
+    return
 }
 
 func (p *Pixiv) requestGet(link string) (doc *goquery.Document, err error) {
@@ -99,7 +115,6 @@ func (p *Pixiv) requestGet(link string) (doc *goquery.Document, err error) {
 }
 
 func (p *Pixiv) ParseBookmark(page int) (err error) {
-
     link := fmt.Sprintf(PixivBookmarkLink, page)
     htmlDoc, err := p.requestGet(link)
     if err != nil {
@@ -139,6 +154,7 @@ func (p *Pixiv) ParseBookmark(page int) (err error) {
 
 func (p *Pixiv) ParseIllust(ill *Illust) {
 
+    ill.Times++
     // todo process
     p.ProcessChan <- ill
 }
@@ -160,8 +176,8 @@ func (p *Pixiv) Login() (err error) {
 
     // login
     resp, err := p.Client.PostForm(PixivLoginToLink, url.Values{
-        "pixiv_id" : {lib.PixivConf.PixivUser},
-        "password" : {lib.PixivConf.PixivPasswd},
+        "pixiv_id" : {p.UserID},
+        "password" : {p.password},
         "post_key" : {postKey},
     })
 
@@ -175,7 +191,7 @@ func (p *Pixiv) Login() (err error) {
     // is login success
     if body != nil {
         var respData struct {
-            Error string
+            Error bool
             Message string
             Body map[string]interface{}
         }

@@ -8,18 +8,18 @@ import (
 var config *ini.File
 
 var PixivConf = &struct{
-	PixivUser string
+	PixivUser	string
 	PixivPasswd string
 }{}
 
 var ProxyConf = &struct{
-	ProxyOn bool
-	ProxyHost string
-	ProxyPort string
+	ProxyOn		bool
+	ProxyHost	string
+	ProxyPort	string
 }{}
 
 var RuntimeConf = &struct{
-	SaveFilePath string
+	SaveFilePath	string
 }{}
 
 func init() {

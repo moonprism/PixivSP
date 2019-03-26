@@ -14,7 +14,10 @@ func main() {
 	cookies, err := lib.LoadCookies(p.IndexUrl)
 	if os.IsNotExist(err) {
 		p.Login()
+		lib.SaveCookies(p.IndexUrl, p.GetCookies())
 	}
+
+	p.Login()
 
 	p.SetCookies(cookies)
 	p.ParseBookmark(1)
