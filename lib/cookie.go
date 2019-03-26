@@ -24,11 +24,7 @@ func SaveCookies(u *url.URL, cookies []*http.Cookie) error {
 
 	encoder := gob.NewEncoder(file)
 
-	if err = encoder.Encode(cookies); err != nil {
-		return err
-	}
-
-	return nil
+	return encoder.Encode(cookies)
 }
 
 // LoadCookies set cookieJar from file
@@ -36,17 +32,14 @@ func LoadCookies(u *url.URL) (cookies []*http.Cookie, err error) {
 	fileName := RuntimeConf.SaveFilePath + FileName + u.Host
 
 	file, err := os.Open(fileName)
-	defer file.Close()
-
 	if err != nil {
 		return
 	}
 
-	decoder := gob.NewDecoder(file)
+	defer file.Close()
 
-	if err := decoder.Decode(&cookies); err != nil {
-		return
-	}
+	decoder := gob.NewDecoder(file)
+	err = decoder.Decode(&cookies)
 
 	return
 }

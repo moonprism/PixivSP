@@ -2,7 +2,7 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
+    "errors"
     "github.com/PuerkitoBio/goquery"
     "github.com/moonprism/PixivSP/lib"
     "io/ioutil"
@@ -12,25 +12,37 @@ import (
     "net/url"
 )
 
-const PixivLoginUrl  = "https://accounts.pixiv.net/login?lang=zh&source=pc&view_type=page&ref=wwwtop_accounts_index"
-const PixivLoginToUrl  = "https://accounts.pixiv.net/api/login?lang=zh"
-const PixivBookmark  = "https://www.pixiv.net/bookmark.php"
+const (
+    PixivLoginLink  = "https://accounts.pixiv.net/login?lang=zh&source=pc&view_type=page&ref=wwwtop_accounts_index"
+    PixivLoginToLink  = "https://accounts.pixiv.net/api/login?lang=zh"
+    PixivBookmarkLink  = "https://www.pixiv.net/bookmark.php"
+)
 
-type LoginResponse struct {
-    Error string
-    Message string
-    Body map[string]interface{}
+type Pixiv struct {
+    UserID string
+    password string
+    Client *http.Client
+    IndexUrl *url.URL
+    ProcessChan chan *Illust
 }
 
-var cookieUrl *url.URL
-
-func initial() {
-    cookieUrl, _ = url.Parse(PixivBookmark)
+type Illust struct{
+    ID string
+    AuthorID string
+    LikeNum int
+    // generate link
+    Link string
+    // error info
+    Error error
 }
 
-func main() {
+func NewPixiv(id string, passwd string) (p *Pixiv) {
 
-    initial()
+    p = &Pixiv{
+        UserID: id,
+        password: passwd,
+        ProcessChan: make(chan *Illust, 100),
+    }
 
     jar, _ := cookiejar.New(nil)
 
@@ -38,87 +50,107 @@ func main() {
         Jar: jar,
     }
 
+    p.Client = client
+    p.IndexUrl, _ = url.Parse("https://www.pixiv.net")
+
+    return
+}
+
+func (p *Pixiv) SetCookies(cookies []*http.Cookie) {
+    p.Client.Jar.SetCookies(p.IndexUrl, cookies)
+}
+
+func (p *Pixiv) GetCookies() []*http.Cookie {
+    return p.Client.Jar.Cookies(p.IndexUrl)
+}
+
+func (p *Pixiv) SetProxy(host string, port int) {
     if  lib.ProxyConf.ProxyOn == true {
-        if err := lib.SetTransport(client, lib.ProxyConf.ProxyHost+":"+lib.ProxyConf.ProxyPort); err != nil {
-            fmt.Println(err)
-            return
+        if err := lib.SetTransport(p.Client, lib.ProxyConf.ProxyHost+":"+lib.ProxyConf.ProxyPort); err != nil {
+            log.Fatalf("proxy - fatal: %v", err)
+        }
+    }
+}
+
+func (p *Pixiv) ParseBookmark(page int) (ills []Illust, err error) {
+
+    for _, ill := range ills {
+        go p.ParseIllust(&ill)
+    }
+
+    processNum := 0
+
+    for ill := range p.ProcessChan {
+        if ill.Link != "" && ill.Error == nil {
+            processNum ++
         }
     }
 
-    cookies, err := lib.LoadCookies(cookieUrl)
-
-    if err != nil {
-        login(client)
-    } else {
-        client.Jar.SetCookies(cookieUrl, cookies)
-    }
-
-    resp, err := client.Get(PixivBookmark)
-
-    if err != nil {
-        log.Fatalf("get bookmark failed: %v", err)
-    }
-
-    htmlDoc, err := goquery.NewDocumentFromReader(resp.Body)
-
-    if err != nil {
-        fmt.Println(err)
-        return
-    }
-
-    userName := htmlDoc.Find("a.user-name").Text()
-
-   if userName == "" {
-        login(client)
-   } else {
-       println(userName)
-   }
+    return
 }
 
-func login(client *http.Client) {
+func (p *Pixiv) ParseIllust(ill *Illust) {
+
+    // process over
+    p.ProcessChan <- ill
+}
+
+func (p *Pixiv) Login() (err error) {
     // request login page
-    resp, err := client.Get(PixivLoginUrl)
+    resp, err := p.Client.Get(PixivLoginLink)
     if err != nil {
-        fmt.Println(err)
+        log.Printf("login - get pixiv login url failed: %v", err)
         return
     }
 
+    // parse html doc
     htmlDoc, err := goquery.NewDocumentFromReader(resp.Body)
-
     if err != nil {
-        fmt.Println(err)
+        log.Printf("login - goquery parse failed: %v", err)
         return
     }
 
+    // find post key
     postKey, isSetKey := htmlDoc.Find("input[name='post_key']").First().Attr("value")
-
     if isSetKey != true {
-        // not found login form post key
-
+        err = errors.New("not found post_key")
+        log.Printf("login - %v", err)
         return
     }
+
     // login
-    resp, err = client.PostForm(PixivLoginToUrl, url.Values{
+    resp, err = p.Client.PostForm(PixivLoginToLink, url.Values{
         "pixiv_id" : {lib.PixivConf.PixivUser},
         "password" : {lib.PixivConf.PixivPasswd},
         "post_key" : {postKey},
     })
 
     if err != nil {
-        log.Fatalf("post login form failed: %v", err)
+        log.Printf("login - post login form failed: %v", err)
+        return
     }
 
     body, _ := ioutil.ReadAll(resp.Body)
 
-    // login status
-    if string(body) != "" {
-        var respData LoginResponse
-        _ = json.Unmarshal(body, &respData)
+    // is login success
+    if body != nil {
+        var respData struct {
+            Error string
+            Message string
+            Body map[string]interface{}
+        }
 
+        if err = json.Unmarshal(body, &respData); err != nil {
+            log.Printf("login - parse response date failed: %v", err)
+            return
+        }
+
+        // dump login error info
         if respData.Body["validation_errors"] != nil {
-            log.Fatalf("login error : %v", respData.Body["validation_errors"])
+            err = errors.New("login failed")
+            log.Printf("%v: %v", err, respData.Body["validation_errors"])
+            return
         }
     }
-
-    lib.SaveCookies(cookieUrl, client.Jar.Cookies(cookieUrl))
+    return
 }
