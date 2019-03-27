@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"github.com/moonprism/PixivSP/tools"
 	"golang.org/x/net/proxy"
 	"io"
 	"io/ioutil"
@@ -44,7 +45,7 @@ type Pixiv struct {
 }
 
 type IllustSaveProgress struct {
-	ID			string	`json:"id"`
+	ID		string		`json:"id"`
 	Percentage	int		`json:"percentage"`
 }
 
@@ -198,7 +199,7 @@ type WriteCounter struct {
 func (wc *WriteCounter) Write(p []byte) (n int, err error) {
 	n = len(p)
 	wc.Size += uint64(n)
-	per := int(wc.Size / wc.Total * 100)
+	per := int(float32(wc.Size) / float32(wc.Total) * 100)
 	if per > wc.lastPercentage {
 		wc.Pixiv.SaveProgress <- &IllustSaveProgress{
 			ID:			wc.Illust.ID,
@@ -210,8 +211,20 @@ func (wc *WriteCounter) Write(p []byte) (n int, err error) {
 }
 
 func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
-	fileName := p.SavePath+"/"+i.ID
+	tmpName := p.SavePath+"/"+i.ID+".tmp"
+	fileName := p.SavePath+"/"+i.ID+".png"
 	illustPageUrl := fmt.Sprintf(PixivIllustLink, i.ID)
+
+	if tools.Exists(fileName) {
+		return
+	}
+
+	if tools.Exists(tmpName) {
+		err = os.Remove(tmpName)
+		if err != nil {
+			return
+		}
+	}
 
 	doc, err := p.GetResponseDoc(illustPageUrl)
 	if err != nil {
@@ -224,7 +237,13 @@ func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
 		return errors.New("no find image "+i.ID)
 	}
 	imgSrc := strings.Replace(imgSrcInfo[1], "\\", "", -1)
-	resp, err := p.Client.Get(imgSrc)
+
+	req, err := http.NewRequest("GET", imgSrc, nil)
+	if err != nil {
+		return
+	}
+	req.Header.Set("Referer", illustPageUrl)
+	resp, err := p.Client.Do(req)
 	if err != nil {
 		return
 	}
@@ -235,7 +254,7 @@ func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
 		return
 	}
 
-	file, err := os.Create(fileName+".tmp")
+	file, err := os.Create(tmpName)
 	if err != nil {
 		return
 	}
@@ -248,12 +267,12 @@ func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
 	}
 	_, err = io.Copy(file, io.TeeReader(resp.Body, counter))
 	if err != nil {
-		return err
+		return
 	}
 
-	err = os.Rename(fileName+".tmp", fileName+".png")
+	err = os.Rename(tmpName, fileName)
 	if err != nil {
-		return err
+		return
 	}
 
 	return

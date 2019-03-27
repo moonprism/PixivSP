@@ -1,4 +1,4 @@
-package lib
+package tools
 
 import (
 	"github.com/go-ini/ini"
