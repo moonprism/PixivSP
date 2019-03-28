@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/http/cookiejar"
@@ -20,6 +19,7 @@ import (
 	"github.com/PuerkitoBio/goquery"
 	"github.com/moonprism/PixivSP/tools"
 	"golang.org/x/net/proxy"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -124,20 +124,17 @@ func (p *Pixiv) GetResponseDoc(link string) (doc *goquery.Document, err error) {
 	resp, err := p.Client.Get(link)
 	if err != nil {
 		log.Printf("request url %s failed: %v", link, err)
+		return
 	}
 
 	defer func() {
 		resp.Body.Close()
-		//if p := recover(); p != nil {
-		//	doc = nil
-		//	err = errors.New("http request panic")
-		//}
 	}()
 
 	// parse html doc
 	doc, err = goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		log.Printf("parse html %s failed: %v", link, err)
+		log.Warningf("parse html %s failed: %v", link, err)
 	}
 	return
 }
@@ -300,7 +297,7 @@ func (p *Pixiv) Login(id string, passwd string) (err error) {
 	postKey, isSetKey := htmlDoc.Find("input[name='post_key']").First().Attr("value")
 	if isSetKey != true {
 		err = errors.New("not found post_key")
-		log.Printf("login - %v", err)
+		log.Errorf("login - %v", err)
 		return
 	}
 
@@ -322,16 +319,12 @@ func (p *Pixiv) PostLoginForm(postKey string) (response *PixivLoginResponse, err
 		"post_key": {postKey},
 	})
 	if err != nil {
-		log.Printf("login - post login form failed: %v", err)
+		log.Errorf("login - post login form failed: %v", err)
 		return
 	}
 
 	defer func() {
 		resp.Body.Close()
-		//if p := recover(); p != nil {
-		//	response = nil
-		//	err = errors.New("http request panic")
-		//}
 	}()
 
 	body, _ := ioutil.ReadAll(resp.Body)
@@ -340,14 +333,14 @@ func (p *Pixiv) PostLoginForm(postKey string) (response *PixivLoginResponse, err
 	if body != nil {
 
 		if err = json.Unmarshal(body, &response); err != nil {
-			log.Printf("login - parse response date failed: %v", err)
+			log.Warningf("login - parse response date failed: %v", err)
 			return
 		}
 
 		// dump login error info
 		if response.Body["validation_errors"] != nil {
 			err = errors.New("login failed")
-			log.Printf("%v: %v", err, response.Body["validation_errors"])
+			log.Warningf("%v: %v", err, response.Body["validation_errors"])
 			return
 		}
 	}

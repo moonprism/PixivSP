@@ -2,13 +2,18 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"sort"
-	"strings"
-
 	"github.com/davecgh/go-spew/spew"
 	"github.com/moonprism/PixivSP/tools"
+	log "github.com/sirupsen/logrus"
+	"os"
+	"sort"
 )
+
+func init() {
+	if !tools.Exists(tools.RuntimeConf.IllustSavePath) {
+		os.Mkdir(tools.RuntimeConf.IllustSavePath, 0777)
+	}
+}
 
 func main() {
 	p := NewPixiv()
@@ -44,11 +49,10 @@ func main() {
 		select {
 		case i := <-p.ProcessChan:
 			if i.Error == nil {
-				// make struct
+
 			} else if i.Times < 3 {
-				//go p.ParseIllust(i)
-			} else {
-				// failed logs
+				log.Warningf("download image failed: %v", i.Error)
+				go p.ParseIllust(i)
 			}
 			break
 		case s := <-p.ProgressChan:
@@ -60,16 +64,10 @@ func main() {
 			}
 			sort.Strings(ids)
 			for _, id := range ids {
-				fmt.Printf("%s.png %s%d%%\n", id, Bar(percentages[id], 30), percentages[id])
+				fmt.Printf("%s %02d%%\n", id, percentages[id])
 			}
 			fmt.Printf("\033[%dA\033[K", len(ids))
 		}
 	}
 
-}
-
-// 这段测试代码网上找的，以后这个chan的数据直接写到websocket里
-func Bar(vl int, width int) string {
-	return fmt.Sprintf("%s%*c", strings.Repeat("█", vl/10), vl/10-width+1,
-		([]rune(" ▏▎▍▌▋▋▊▉█"))[vl%10])
 }
