@@ -4,9 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
-	"github.com/moonprism/PixivSP/tools"
-	"golang.org/x/net/proxy"
 	"io"
 	"io/ioutil"
 	"log"
@@ -19,6 +16,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/moonprism/PixivSP/tools"
+	"golang.org/x/net/proxy"
 )
 
 const (
@@ -39,14 +40,14 @@ type Pixiv struct {
 	Client   *http.Client
 	IndexUrl *url.URL
 
-	ProcessChan		chan *Illust
-	SavePath		string
-	SaveProgress	chan *IllustSaveProgress
+	ProcessChan  chan *Illust
+	SavePath     string
+	ProgressChan chan *IllustSaveProgress
 }
 
 type IllustSaveProgress struct {
-	ID		string		`json:"id"`
-	Percentage	int		`json:"percentage"`
+	ID         string `json:"id"`
+	Percentage int    `json:"percentage"`
 }
 
 type Illust struct {
@@ -67,15 +68,13 @@ type Illust struct {
 	// in channel times
 	Times int
 
-	CurrentSaveProgress	*IllustSaveProgress
+	CurrentProgress *IllustSaveProgress
 }
 
-func NewPixiv(id string, passwd string) (p *Pixiv) {
+func NewPixiv() (p *Pixiv) {
 	p = &Pixiv{
-		UserID:      id,
-		password:    passwd,
-		ProcessChan: make(chan *Illust, 30),
-		SaveProgress: make(chan *IllustSaveProgress, 100),
+		ProcessChan:  make(chan *Illust, 30),
+		ProgressChan: make(chan *IllustSaveProgress, 100),
 	}
 
 	jar, _ := cookiejar.New(nil)
@@ -143,7 +142,7 @@ func (p *Pixiv) GetResponseDoc(link string) (doc *goquery.Document, err error) {
 	return
 }
 
-func (p *Pixiv) ParseBookmark(page int) (err error) {
+func (p *Pixiv) ParseBookmark(page int) (netxPage int, err error) {
 	link := fmt.Sprintf(PixivBookmarkLink, page)
 	htmlDoc, err := p.GetResponseDoc(link)
 	if err != nil {
@@ -189,8 +188,8 @@ func (p *Pixiv) ParseIllust(i *Illust) {
 }
 
 type WriteCounter struct {
-	Total	uint64
-	Size	uint64
+	Total          uint64
+	Size           uint64
 	lastPercentage int
 	*Pixiv
 	*Illust
@@ -201,19 +200,36 @@ func (wc *WriteCounter) Write(p []byte) (n int, err error) {
 	wc.Size += uint64(n)
 	per := int(float32(wc.Size) / float32(wc.Total) * 100)
 	if per > wc.lastPercentage {
-		wc.Pixiv.SaveProgress <- &IllustSaveProgress{
-			ID:			wc.Illust.ID,
-			Percentage:	per,
+		wc.Illust.CurrentProgress = &IllustSaveProgress{
+			ID:         wc.Illust.ID,
+			Percentage: per,
 		}
+		wc.Pixiv.ProgressChan <- wc.Illust.CurrentProgress
 		wc.lastPercentage = per
 	}
 	return
 }
 
+func (p *Pixiv) parseIllustSrc(illustID string) (src string, pageURL string, err error) {
+	pageURL = fmt.Sprintf(PixivIllustLink, illustID)
+	doc, err := p.GetResponseDoc(pageURL)
+	if err != nil {
+		return
+	}
+	html, _ := doc.Html()
+	imgRegexp := regexp.MustCompile(`,"original":"(.+?)"}`)
+	imgSrcInfo := imgRegexp.FindStringSubmatch(html)
+	if len(imgSrcInfo) < 2 {
+		err = errors.New("no find image " + illustID)
+		return
+	}
+	src = strings.Replace(imgSrcInfo[1], "\\", "", -1)
+	return
+}
+
 func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
-	tmpName := p.SavePath+"/"+i.ID+".tmp"
-	fileName := p.SavePath+"/"+i.ID+".png"
-	illustPageUrl := fmt.Sprintf(PixivIllustLink, i.ID)
+	tmpName := p.SavePath + "/" + i.ID + ".tmp"
+	fileName := p.SavePath + "/" + i.ID + ".png"
 
 	if tools.Exists(fileName) {
 		return
@@ -226,23 +242,16 @@ func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
 		}
 	}
 
-	doc, err := p.GetResponseDoc(illustPageUrl)
+	imgSrc, illustPageURL, err := p.parseIllustSrc(i.ID)
 	if err != nil {
 		return
 	}
-	html, _ := doc.Html()
-	imgRegexp := regexp.MustCompile(`,"original":"(.+?)"}`)
-	imgSrcInfo := imgRegexp.FindStringSubmatch(html)
-	if len(imgSrcInfo) < 2 {
-		return errors.New("no find image "+i.ID)
-	}
-	imgSrc := strings.Replace(imgSrcInfo[1], "\\", "", -1)
 
 	req, err := http.NewRequest("GET", imgSrc, nil)
 	if err != nil {
 		return
 	}
-	req.Header.Set("Referer", illustPageUrl)
+	req.Header.Set("Referer", illustPageURL)
 	resp, err := p.Client.Do(req)
 	if err != nil {
 		return
@@ -261,8 +270,8 @@ func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
 	defer file.Close()
 
 	counter := &WriteCounter{
-		Total: uint64(fSize),
-		Pixiv: p,
+		Total:  uint64(fSize),
+		Pixiv:  p,
 		Illust: i,
 	}
 	_, err = io.Copy(file, io.TeeReader(resp.Body, counter))
@@ -278,7 +287,9 @@ func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
 	return
 }
 
-func (p *Pixiv) Login() (err error) {
+func (p *Pixiv) Login(id string, passwd string) (err error) {
+	p.UserID, p.password = id, passwd
+
 	// request login page
 	htmlDoc, err := p.GetResponseDoc(PixivLoginLink)
 	if err != nil {

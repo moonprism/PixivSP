@@ -1,25 +1,27 @@
 package tools
 
 import (
-	"github.com/go-ini/ini"
 	"log"
+
+	"github.com/go-ini/ini"
 )
 
 var config *ini.File
 
-var PixivConf = &struct{
-	PixivUser	string
+var PixivConf = &struct {
+	PixivUser   string
 	PixivPasswd string
 }{}
 
-var ProxyConf = &struct{
-	ProxyOn		bool
-	ProxyHost	string
-	ProxyPort	string
+var ProxyConf = &struct {
+	ProxyOn   bool
+	ProxyHost string
+	ProxyPort string
 }{}
 
-var RuntimeConf = &struct{
-	SaveFilePath	string
+var RuntimeConf = &struct {
+	IllustSavePath string
+	CookieSavePath string
 }{}
 
 func init() {

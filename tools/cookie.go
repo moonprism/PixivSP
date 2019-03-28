@@ -7,11 +7,11 @@ import (
 	"os"
 )
 
-const FileName  = "cookie_"
+const suffix = ".cookie"
 
 // SaveCookies save cookie info to local file
 func SaveCookies(u *url.URL, cookies []*http.Cookie) error {
-	fileName := RuntimeConf.SaveFilePath + FileName + u.Host
+	fileName := RuntimeConf.CookieSavePath + "/" + u.Host + suffix
 
 	_ = os.Remove(fileName)
 
@@ -29,7 +29,7 @@ func SaveCookies(u *url.URL, cookies []*http.Cookie) error {
 
 // LoadCookies set cookieJar from file
 func LoadCookies(u *url.URL) (cookies []*http.Cookie, err error) {
-	fileName := RuntimeConf.SaveFilePath + FileName + u.Host
+	fileName := RuntimeConf.CookieSavePath + "/" + u.Host + suffix
 
 	file, err := os.Open(fileName)
 	if err != nil {

@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
-	"github.com/moonprism/PixivSP/tools"
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/davecgh/go-spew/spew"
+	"github.com/moonprism/PixivSP/tools"
 )
 
 func main() {
-	p := NewPixiv(tools.PixivConf.PixivUser, tools.PixivConf.PixivPasswd)
+	p := NewPixiv()
 
 	if tools.ProxyConf.ProxyOn {
 		if err := p.SetProxy(tools.ProxyConf.ProxyHost, tools.ProxyConf.ProxyPort); err != nil {
@@ -21,7 +22,7 @@ func main() {
 
 	cookies, err := tools.LoadCookies(p.IndexUrl)
 	if os.IsNotExist(err) {
-		err := p.Login()
+		err := p.Login(tools.PixivConf.PixivUser, tools.PixivConf.PixivPasswd)
 		if err != nil {
 			spew.Dump(err)
 			return
@@ -33,7 +34,7 @@ func main() {
 	}
 
 	p.SetCookies(cookies)
-	p.SetSavePath(tools.RuntimeConf.SaveFilePath)
+	p.SetSavePath(tools.RuntimeConf.IllustSavePath)
 
 	p.ParseBookmark(1)
 
@@ -50,7 +51,7 @@ func main() {
 				// failed logs
 			}
 			break
-		case s := <-p.SaveProgress:
+		case s := <-p.ProgressChan:
 			percentages[s.ID] = s.Percentage
 
 			var ids []string
@@ -66,6 +67,7 @@ func main() {
 	}
 
 }
+
 // 这段测试代码网上找的，以后这个chan的数据直接写到websocket里
 func Bar(vl int, width int) string {
 	return fmt.Sprintf("%s%*c", strings.Repeat("█", vl/10), vl/10-width+1,
