@@ -11,7 +11,9 @@ import (
 
 func init() {
 	if !tools.Exists(tools.RuntimeConf.IllustSavePath) {
-		os.Mkdir(tools.RuntimeConf.IllustSavePath, 0777)
+		if os.Mkdir(tools.RuntimeConf.IllustSavePath, 0777) != nil {
+			//
+		}
 	}
 }
 
@@ -41,7 +43,24 @@ func main() {
 	p.SetCookies(cookies)
 	p.SetSavePath(tools.RuntimeConf.IllustSavePath)
 
-	p.ParseBookmark(1)
+	var illustNum, page int
+
+	for {
+		page++
+		num, nextPage, err := p.ParseBookmark(page)
+		if err != nil {
+			log.Fatalf("parse bookmark error: %v", err)
+		}
+		if nextPage == 0  {
+			break
+		}
+
+		illustNum += num
+		log.WithFields(log.Fields{
+			"num": num,
+			"nextPage": nextPage,
+		}).Info("parse next page")
+	}
 
 	var percentages = make(map[string]int)
 
@@ -49,10 +68,21 @@ func main() {
 		select {
 		case i := <-p.ProcessChan:
 			if i.Error == nil {
-
-			} else if i.Times < 3 {
-				log.Warningf("download image failed: %v", i.Error)
+				illustNum--
+			} else if i.Times <= 3 {
+				log.WithFields(log.Fields{
+					"times": i.Times,
+					"illust": i.ID,
+				}).Warningf("download image failed: %v", i.Error)
 				go p.ParseIllust(i)
+			} else {
+				illustNum--
+				log.WithFields(log.Fields{
+					"illust": i.ID,
+				}).Errorf("download image failed: %v", i.Error)
+			}
+			if illustNum == 0 {
+				log.Info("over")
 			}
 			break
 		case s := <-p.ProgressChan:
@@ -69,5 +99,4 @@ func main() {
 			fmt.Printf("\033[%dA\033[K", len(ids))
 		}
 	}
-
 }

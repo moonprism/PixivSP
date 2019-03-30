@@ -128,7 +128,7 @@ func (p *Pixiv) GetResponseDoc(link string) (doc *goquery.Document, err error) {
 	}
 
 	defer func() {
-		resp.Body.Close()
+		err = resp.Body.Close()
 	}()
 
 	// parse html doc
@@ -139,7 +139,7 @@ func (p *Pixiv) GetResponseDoc(link string) (doc *goquery.Document, err error) {
 	return
 }
 
-func (p *Pixiv) ParseBookmark(page int) (netxPage int, err error) {
+func (p *Pixiv) ParseBookmark(page int) (illustNum int, nextPage int, err error) {
 	link := fmt.Sprintf(PixivBookmarkLink, page)
 	htmlDoc, err := p.GetResponseDoc(link)
 	if err != nil {
@@ -172,18 +172,29 @@ func (p *Pixiv) ParseBookmark(page int) (netxPage int, err error) {
 		count := selection.Find("a.bookmark-count").First().Text()
 		ill.Like, _ = strconv.Atoi(count)
 
+		illustNum++
 		go p.ParseIllust(ill)
 	})
+
+	// search next page link
+	if nextPageStr := htmlDoc.Find("ul.page-list li.current").Next().Find("a").First().Text(); nextPageStr != "" {
+		nextPage, err = strconv.Atoi(nextPageStr)
+		if err != nil {
+			return
+		}
+	}
+
 	return
 }
 
 func (p *Pixiv) ParseIllust(i *Illust) {
-	i.Error = p.DownLoadIllust(i)
+	i.Error = p.DownloadIllust(i)
 	i.Times++
 	// todo process
 	p.ProcessChan <- i
 }
 
+// WriteCounter user for display write file progress bar
 type WriteCounter struct {
 	Total          uint64
 	Size           uint64
@@ -224,7 +235,7 @@ func (p *Pixiv) parseIllustSrc(illustID string) (src string, pageURL string, err
 	return
 }
 
-func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
+func (p *Pixiv) DownloadIllust(i *Illust) (err error) {
 	tmpName := p.SavePath + "/" + i.ID + ".tmp"
 	fileName := p.SavePath + "/" + i.ID + ".png"
 
@@ -253,7 +264,9 @@ func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
 	if err != nil {
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		err = resp.Body.Close()
+	}()
 
 	fSize, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 32)
 	if err != nil {
@@ -264,7 +277,9 @@ func (p *Pixiv) DownLoadIllust(i *Illust) (err error) {
 	if err != nil {
 		return
 	}
-	defer file.Close()
+	defer func() {
+		err = file.Close()
+	}()
 
 	counter := &WriteCounter{
 		Total:  uint64(fSize),
@@ -324,7 +339,7 @@ func (p *Pixiv) PostLoginForm(postKey string) (response *PixivLoginResponse, err
 	}
 
 	defer func() {
-		resp.Body.Close()
+		err = resp.Body.Close()
 	}()
 
 	body, _ := ioutil.ReadAll(resp.Body)
