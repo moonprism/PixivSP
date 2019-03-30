@@ -57,6 +57,9 @@ type Illust struct {
 	Like int
 	Tags string
 
+	Page	int
+	Index	int
+
 	// author info
 	MemberId   string
 	MemberName string
@@ -139,7 +142,7 @@ func (p *Pixiv) GetResponseDoc(link string) (doc *goquery.Document, err error) {
 	return
 }
 
-func (p *Pixiv) ParseBookmark(page int) (illustNum int, nextPage int, err error) {
+func (p *Pixiv) ParseBookmark(page int) (illustQuantity int, nextPage int, err error) {
 	link := fmt.Sprintf(PixivBookmarkLink, page)
 	htmlDoc, err := p.GetResponseDoc(link)
 	if err != nil {
@@ -152,7 +155,9 @@ func (p *Pixiv) ParseBookmark(page int) (illustNum int, nextPage int, err error)
 	}
 
 	htmlDoc.Find("li.image-item").Each(func(i int, selection *goquery.Selection) {
-		ill := &Illust{}
+		ill := &Illust{
+			Page: page,
+		}
 
 		imgDoc := selection.Find("img").First()
 
@@ -172,7 +177,9 @@ func (p *Pixiv) ParseBookmark(page int) (illustNum int, nextPage int, err error)
 		count := selection.Find("a.bookmark-count").First().Text()
 		ill.Like, _ = strconv.Atoi(count)
 
-		illustNum++
+		illustQuantity++
+		ill.Index = illustQuantity
+
 		go p.ParseIllust(ill)
 	})
 
@@ -190,7 +197,6 @@ func (p *Pixiv) ParseBookmark(page int) (illustNum int, nextPage int, err error)
 func (p *Pixiv) ParseIllust(i *Illust) {
 	i.Error = p.DownloadIllust(i)
 	i.Times++
-	// todo process
 	p.ProcessChan <- i
 }
 
@@ -204,6 +210,7 @@ type WriteCounter struct {
 }
 
 func (wc *WriteCounter) Write(p []byte) (n int, err error) {
+	// todo 超时后的断点续传
 	n = len(p)
 	wc.Size += uint64(n)
 	per := int(float32(wc.Size) / float32(wc.Total) * 100)

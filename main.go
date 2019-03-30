@@ -43,7 +43,7 @@ func main() {
 	p.SetCookies(cookies)
 	p.SetSavePath(tools.RuntimeConf.IllustSavePath)
 
-	var illustNum, page int
+	var illustQuantity, page int
 
 	for {
 		page++
@@ -55,7 +55,7 @@ func main() {
 			break
 		}
 
-		illustNum += num
+		illustQuantity += num
 		log.WithFields(log.Fields{
 			"num": num,
 			"nextPage": nextPage,
@@ -68,7 +68,7 @@ func main() {
 		select {
 		case i := <-p.ProcessChan:
 			if i.Error == nil {
-				illustNum--
+				illustQuantity--
 			} else if i.Times <= 3 {
 				log.WithFields(log.Fields{
 					"times": i.Times,
@@ -76,12 +76,12 @@ func main() {
 				}).Warningf("download image failed: %v", i.Error)
 				go p.ParseIllust(i)
 			} else {
-				illustNum--
+				illustQuantity--
 				log.WithFields(log.Fields{
 					"illust": i.ID,
 				}).Errorf("download image failed: %v", i.Error)
 			}
-			if illustNum == 0 {
+			if illustQuantity == 0 {
 				log.Info("over")
 			}
 			break
