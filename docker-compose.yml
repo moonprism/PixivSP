@@ -1,0 +1,15 @@
+app:
+    hostname: go
+    build: ./docker/app
+    volumes:
+        - "./log:/log"
+    ports:
+        - "80:80"
+    links:
+        - mysql
+
+mysql:
+    hostname: mysql
+    image: mysql:8.0
+    ports:
+        - "3306:3306"
