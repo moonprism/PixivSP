@@ -4,4 +4,4 @@ build:
 	rm PixivSP
 	cp -r conf/*.ini docker/app/conf
 	docker-compose build
-	rm docker/app/conf/*
+	rm docker/app/conf/*.ini

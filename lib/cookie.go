@@ -20,7 +20,9 @@ func SaveCookies(u *url.URL, cookies []*http.Cookie) error {
 		return err
 	}
 
-	defer file.Close()
+	defer func () {
+		err = file.Close()
+	}()
 
 	encoder := gob.NewEncoder(file)
 
@@ -36,7 +38,9 @@ func LoadCookies(u *url.URL) (cookies []*http.Cookie, err error) {
 		return
 	}
 
-	defer file.Close()
+	defer func() {
+		err = file.Close()
+	}()
 
 	decoder := gob.NewDecoder(file)
 	err = decoder.Decode(&cookies)

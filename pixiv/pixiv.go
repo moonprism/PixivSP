@@ -1,4 +1,4 @@
-package main
+package pixiv
 
 import (
 	"encoding/json"
@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
-	"github.com/moonprism/PixivSP/tools"
+	"github.com/moonprism/PixivSP/lib"
 	"golang.org/x/net/proxy"
 	log "github.com/sirupsen/logrus"
 )
@@ -32,52 +32,26 @@ const (
 	PixivIllustLink = "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=%s"
 )
 
+var (
+	ErrLoginFailed = errors.New("login failed")
+)
+
 type Pixiv struct {
 	// user info
-	UserID   string
-	password string
+	UserID   int64
 
 	Client   *http.Client
 	IndexUrl *url.URL
 
 	ProcessChan  chan *Illust
-	SavePath     string
 	ProgressChan chan *IllustSaveProgress
 }
 
-type IllustSaveProgress struct {
-	ID         string `json:"id"`
-	Percentage int    `json:"percentage"`
-}
-
-type Illust struct {
-	// illust info
-	ID   string
-	Name string
-	Like int
-	Tags string
-
-	Page	int
-	Index	int
-
-	// author info
-	MemberId   string
-	MemberName string
-
-	// generate link
-	Link string
-	// processerror info
-	Error error
-	// in channel times
-	Times int
-
-	CurrentProgress *IllustSaveProgress
-}
-
-func NewPixiv() (p *Pixiv) {
+func New(userID int64) (p *Pixiv) {
 	p = &Pixiv{
-		ProcessChan:  make(chan *Illust, 30),
-		ProgressChan: make(chan *IllustSaveProgress, 100),
+		UserID:	userID,
+		ProcessChan:	make(chan *Illust, 30),
+		ProgressChan:	make(chan *IllustSaveProgress, 100),
 	}
 
 	jar, _ := cookiejar.New(nil)
@@ -140,6 +114,19 @@ func (p *Pixiv) GetResponseDoc(link string) (doc *goquery.Document, err error) {
 		log.Warningf("parse html %s failed: %v", link, err)
 	}
 	return
+}
+
+func (p *Pixiv) GetResponseJson(link string) (err error) {
+	resp, err := p.Client.Get(link)
+	if err != nil {
+		return
+	}
+
+	defer func() {
+		err = resp.Body.Close()
+	}()
+
+
 }
 
 func (p *Pixiv) ParseBookmark(page int) (illustQuantity int, nextPage int, err error) {
@@ -306,9 +293,7 @@ func (p *Pixiv) DownloadIllust(i *Illust) (err error) {
 	return
 }
 
-func (p *Pixiv) Login(id string, passwd string) (err error) {
-	p.UserID, p.password = id, passwd
-
+func (p *Pixiv) Login(id string, password string) (err error) {
 	// request login page
 	htmlDoc, err := p.GetResponseDoc(PixivLoginLink)
 	if err != nil {
@@ -318,26 +303,22 @@ func (p *Pixiv) Login(id string, passwd string) (err error) {
 	// find post key
 	postKey, isSetKey := htmlDoc.Find("input[name='post_key']").First().Attr("value")
 	if isSetKey != true {
-		err = errors.New("not found post_key")
+		err =
 		log.Errorf("login - %v", err)
 		return
 	}
 
-	_, err = p.PostLoginForm(postKey)
-	return
-}
+	type PixivLoginResponse struct {
+		Error   bool
+		Message string
+		Body    map[string]interface{}
+	}
+	var response PixivLoginResponse
 
-type PixivLoginResponse struct {
-	Error   bool
-	Message string
-	Body    map[string]interface{}
-}
-
-func (p *Pixiv) PostLoginForm(postKey string) (response *PixivLoginResponse, err error) {
 	// login
 	resp, err := p.Client.PostForm(PixivLoginToLink, url.Values{
-		"pixiv_id": {p.UserID},
-		"password": {p.password},
+		"pixiv_id": {id},
+		"password": {password},
 		"post_key": {postKey},
 	})
 	if err != nil {

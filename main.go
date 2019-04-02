@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/davecgh/go-spew/spew"
-	"github.com/moonprism/PixivSP/tools"
+	"github.com/moonprism/PixivSP/lib"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"sort"
