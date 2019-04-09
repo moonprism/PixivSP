@@ -1,4 +1,4 @@
-package tools
+package lib
 
 import (
 	"log"
@@ -25,11 +25,13 @@ var RuntimeConf = &struct {
 }{}
 
 var MysqlConf = &struct {
-	dbHost	string
-	dbName	string
-	dbUser	string
-	dbPassword	string
+	DSN	string
+	DbHost	string
+	DbName	string
+	DbUser	string
+	DbPassword	string
 }{}
+
 func init() {
 	var err error
 	config, err = ini.Load("config/app.ini")
@@ -41,6 +43,7 @@ func init() {
 	MapTo("proxy", ProxyConf)
 	MapTo("runtime", RuntimeConf)
 	MapTo("mysql", MysqlConf)
+	MysqlConf.DSN = MysqlConf.DbUser + ":" + MysqlConf.DbPassword + "@" + MysqlConf.DbHost + "/" + MysqlConf.DbName + "?charset=utf8"
 }
 
 func MapTo(section string, v interface{}) {

@@ -1,6 +1,9 @@
-package tools
+package lib
 
-import "os"
+import (
+	"os"
+	log "github.com/sirupsen/logrus"
+)
 
 func Exists(path string) bool {
 	_, err := os.Stat(path)
@@ -11,4 +14,14 @@ func Exists(path string) bool {
 		return false
 	}
 	return true
+}
+
+func checkSavePath(path string) (err error) {
+	if !Exists(path) {
+		if err := os.Mkdir(path, 0755); err != nil {
+			log.WithFields(log.Fields{
+				path
+			}).Fatalf("%v", NewError("path is un"))
+		}
+	}
 }

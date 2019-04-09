@@ -9,7 +9,8 @@ import (
 	"sort"
 )
 
-func init() {
+func initial() {
+	// check save path
 	if !tools.Exists(tools.RuntimeConf.IllustSavePath) {
 		if os.Mkdir(tools.RuntimeConf.IllustSavePath, 0777) != nil {
 			//

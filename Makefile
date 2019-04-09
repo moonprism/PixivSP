@@ -5,3 +5,6 @@ build:
 	cp -r conf/*.ini docker/app/conf
 	docker-compose build
 	rm docker/app/conf/*.ini
+
+init:
+	docker-compose up mysql
