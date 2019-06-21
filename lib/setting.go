@@ -20,16 +20,8 @@ var ProxyConf = &struct {
 }{}
 
 var RuntimeConf = &struct {
-	IllustSavePath	string
-	CookieSavePath	string
-}{}
-
-var MysqlConf = &struct {
-	DSN	string
-	DbHost	string
-	DbName	string
-	DbUser	string
-	DbPassword	string
+	SavePath	string
+	Mode	string
 }{}
 
 func init() {
@@ -42,8 +34,6 @@ func init() {
 	MapTo("pixiv", PixivConf)
 	MapTo("proxy", ProxyConf)
 	MapTo("runtime", RuntimeConf)
-	MapTo("mysql", MysqlConf)
-	MysqlConf.DSN = MysqlConf.DbUser + ":" + MysqlConf.DbPassword + "@" + MysqlConf.DbHost + "/" + MysqlConf.DbName + "?charset=utf8"
 }
 
 func MapTo(section string, v interface{}) {

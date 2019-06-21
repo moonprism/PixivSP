@@ -20,11 +20,5 @@ func NewError(message string) error {
 }
 
 func (e *errors) Error() string {
-
-
-	if !ok {
-
-	}
-
-	return ""
+	return  e.Message
 }

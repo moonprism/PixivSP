@@ -11,7 +11,7 @@ const suffix = ".cookie"
 
 // SaveCookies save cookie info to local file
 func SaveCookies(u *url.URL, cookies []*http.Cookie) error {
-	fileName := RuntimeConf.CookieSavePath + "/" + u.Host + suffix
+	fileName := RuntimeConf.SavePath + "/" + u.Host + suffix
 
 	_ = os.Remove(fileName)
 
@@ -31,7 +31,7 @@ func SaveCookies(u *url.URL, cookies []*http.Cookie) error {
 
 // LoadCookies set cookieJar from file
 func LoadCookies(u *url.URL) (cookies []*http.Cookie, err error) {
-	fileName := RuntimeConf.CookieSavePath + "/" + u.Host + suffix
+	fileName := RuntimeConf.SavePath + "/" + u.Host + suffix
 
 	file, err := os.Open(fileName)
 	if err != nil {
