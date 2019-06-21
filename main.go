@@ -21,7 +21,17 @@ const (
 	PixivBookmarkLink = "https://www.pixiv.net/bookmark.php?rest=show&p=%d"
 	// illust page link format
 	PixivIllustLink = "https://www.pixiv.net/member_illust.php?mode=medium&illust_id=%s"
+
+	PixivBookmarkJsonLink = "https://www.pixiv.net/ajax/user/%s/illusts/bookmarks?tag=&offset=0&limit=300&rest=show"
+
+	PixivLoginTestLink = "https://www.pixiv.net/ajax/user/15436506/illusts/bookmarks?tag=&offset=0&limit=200&rest=show"
 )
+
+type PixivCommonResponse struct {
+	Error   bool
+	Message string
+	Body    map[string]interface{}
+}
 
 func login(c *lib.HttpClient) (err error) {
 	// request login page
@@ -36,12 +46,7 @@ func login(c *lib.HttpClient) (err error) {
 		return errors.New("parse login post_key failed")
 	}
 
-	type PixivLoginResponse struct {
-		Error   bool
-		Message string
-		Body    map[string]interface{}
-	}
-	var response PixivLoginResponse
+	var response PixivCommonResponse
 
 	// login
 	resp, err := c.PostForm(PixivLoginToLink, url.Values{
@@ -50,7 +55,7 @@ func login(c *lib.HttpClient) (err error) {
 		"post_key": {postKey},
 	})
 	if err != nil {
-		return lib.NewError(fmt.Sprintf("post login form failed: %v", err))
+		return
 	}
 
 	defer func() {
@@ -63,17 +68,24 @@ func login(c *lib.HttpClient) (err error) {
 	if body != nil {
 
 		if err = json.Unmarshal(body, &response); err != nil {
-			log.Errorf("login failed parse response json: %v", err)
 			return
 		}
 
 		// dump login error info
 		if response.Body["validation_errors"] != nil {
-			log.Errorf("login failed %v", response.Body["validation_errors"])
 			return
 		}
 	}
 	return
+}
+
+func generateCookie(u *url.URL, c *lib.HttpClient) (err error) {
+	// generate cookie
+	if err = login(c); err != nil {
+		log.Errorf("login failed %v", err.Error())
+		return
+	}
+	return  lib.SaveCookies(u, c.Jar.Cookies(u))
 }
 
 func checkLogin(c *lib.HttpClient) {
@@ -81,15 +93,17 @@ func checkLogin(c *lib.HttpClient) {
 	indexUrl, _ := url.Parse("https://www.pixiv.net")
 	cookie, err := lib.LoadCookies(indexUrl)
 	if os.IsNotExist(err) {
-		// generate cookie
-		if err = login(c); err != nil {
-			log.Errorln(err.Error())
-			return
-		}
-		lib.SaveCookies(indexUrl, c.Jar.Cookies(indexUrl))
+		generateCookie(indexUrl, c)
 	}
 	// check cookie expire
+	c.Jar.SetCookies(indexUrl, cookie)
 
+	var response PixivCommonResponse
+
+	err := c.GetResponseJson(PixivLoginTestLink)
+	if err != nil {
+		return
+	}
 }
 
 func main() {

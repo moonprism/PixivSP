@@ -65,7 +65,7 @@ func (c *HttpClient) GetResponseDoc(link string) (doc *goquery.Document, err err
 	return
 }
 
-func (c *HttpClient) GetResponseJson(link string) (err error) {
+func (c *HttpClient) GetResponseJson(link string, data *interface{}) (err error) {
 	resp, err := c.Client.Get(link)
 	if err != nil {
 		log.Errorf("request url %s failed: %v", link, err)
@@ -78,5 +78,7 @@ func (c *HttpClient) GetResponseJson(link string) (err error) {
 			log.Errorf("parse json %s failed: %v", link, err)
 		}
 	}()
+
+
 	return
 }
